@@ -7,8 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Sheet, SheetBody, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { checkDevCode, lockDevMode, setDevMode, unlockDevMode, useDevMode } from "@/lib/dev-mode";
-import { UNLOCKABLE_BOSSES, UNLOCKABLE_FIGHTERS, toggleBookUnlock, toggleBossUnlock, toggleFighterUnlock, toggleZenithUnlock, useDevUnlocks } from "@/lib/dev-unlocks";
+import { checkDevCode, lockDevMode, setDevMode, unlockDevMode, unlockDevModeQuiet, useDevMode } from "@/lib/dev-mode";
+import { UNLOCKABLE_BOSSES, UNLOCKABLE_FIGHTERS, toggleBookUnlock, toggleBossUnlock, toggleFighterUnlock, toggleZenithUnlock, unlockEverything, useDevUnlocks } from "@/lib/dev-unlocks";
 import { DEF_BY_ID } from "@/lib/fighters";
 import { BOSSES, type BossId } from "@/lib/bosses";
 import { ZENITH } from "@/lib/zenith";
@@ -43,11 +43,13 @@ export function DevModeSheet() {
   const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
+  const [allDone, setAllDone] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setTyped("");
     setProblem(null);
+    setAllDone(false);
   }, [open]);
 
   const submit = async (e: React.FormEvent) => {
@@ -58,7 +60,11 @@ export function DevModeSheet() {
     const reply = await checkDevCode(typed);
     setBusy(false);
     if (reply.ok) {
-      unlockDevMode();
+      if (reply.all) {
+        unlockDevModeQuiet();
+        unlockEverything();
+        setAllDone(true);
+      } else unlockDevMode();
       setTyped("");
     } else setProblem(reply.reason);
   };
@@ -117,6 +123,9 @@ export function DevModeSheet() {
             </section>
           ) : (
             <>
+              {allDone && (
+                <Text id="devMode.allDone" as="p" role="status" className="rounded-xl border-2 border-border-strong bg-background-secondary px-4 py-3 text-sm font-bold text-foreground" data-dev-all-done />
+              )}
               <section className="flex flex-col gap-3">
                 <div className="flex items-center justify-between gap-3 rounded-xl border-2 border-border-strong bg-background-secondary px-4 py-3">
                   <Label htmlFor="dev-mode-switch" className="font-display text-lg text-foreground">

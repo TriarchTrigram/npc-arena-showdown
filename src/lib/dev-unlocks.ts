@@ -77,6 +77,19 @@ export function toggleBookUnlock(book: number) {
   store({ ...u, books: toggled(u.books, book) });
 }
 
+/** Every permanent pick at once: all quest and new-generation fighters, every boss (Story and Legacy), every book, and Zenith. */
+export const everyDevUnlock = (): DevUnlocks => ({
+  fighters: [...UNLOCKABLE_FIGHTERS],
+  bosses: [...UNLOCKABLE_BOSSES],
+  books: BOOKS.map((_, i) => i),
+  zenith: true,
+});
+/** Keep everything unlocked for good. Only takes effect once a developer code has been entered here. */
+export function unlockEverything() {
+  if (!loadDevMode().unlocked) return;
+  store(everyDevUnlock());
+}
+
 /** This browser's permanent unlocks, read after the first render so the server and browser agree. */
 export function useDevUnlocks(): DevUnlocks {
   const [u, setU] = useState<DevUnlocks>(EMPTY);

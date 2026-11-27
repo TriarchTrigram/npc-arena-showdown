@@ -482,6 +482,7 @@
     "permFighters": "Fighters",
     "permBosses": "Story bosses",
     "permBooks": "Books",
+    "allDone": "Everything is unlocked for good: every quest and new-generation fighter, every Story and Legacy boss, Zenith, and every book.",
     "lock": "Lock developer mode",
     "lockHint": "Locking it means the code has to be typed again to use it in this browser.",
     "error": {

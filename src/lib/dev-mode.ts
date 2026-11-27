@@ -39,18 +39,24 @@ export const setDevMode = (on: boolean) => {
 };
 /** After the server accepted the code: unlock and switch on. */
 export const unlockDevMode = () => store("on");
+/** After the server accepted the unlock-everything code: open the panel here, with the switch left off so the real save keeps counting. */
+export const unlockDevModeQuiet = () => {
+  if (!loadDevMode().unlocked) store("off");
+};
 /** Forget the code here: the next use needs it typed again. */
 export const lockDevMode = () => store(null);
 
-/** Ask the server whether a typed code is the developer code. */
-export async function checkDevCode(code: string): Promise<{ ok: true } | { ok: false; reason: "wrong" | "busy" | "failed" }> {
+type CodeReply = { ok: true; all?: boolean } | { ok: false; reason: "wrong" | "busy" | "failed" };
+
+/** Ask the server whether a typed code is the developer code, or (`all`) the code that unlocks everything for good. */
+export async function checkDevCode(code: string): Promise<CodeReply> {
   try {
     const res = await fetch("/api/dev-mode", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ code }),
     });
-    return (await res.json()) as { ok: true } | { ok: false; reason: "wrong" | "busy" | "failed" };
+    return (await res.json()) as CodeReply;
   } catch {
     return { ok: false, reason: "failed" };
   }
