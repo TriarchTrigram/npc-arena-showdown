@@ -36,6 +36,7 @@ export function DevModeSheet() {
   const triggerLabel = useString("devMode.open");
   const inputLabel = useString("devMode.label");
   const placeholder = useString("devMode.placeholder");
+  const lockLabel = useString("devMode.lock");
   const dev = useDevMode();
   const perm = useDevUnlocks();
   const permCount = perm.fighters.length + perm.bosses.length + perm.books.length + (perm.zenith ? 1 : 0);
@@ -70,6 +71,7 @@ export function DevModeSheet() {
   };
 
   return (
+    <div className="flex shrink-0 items-center gap-1">
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
         <Button variant="ghost" size="sm" aria-label={triggerLabel} title={triggerLabel} data-dev-mode-open>
@@ -196,5 +198,11 @@ export function DevModeSheet() {
         </div>
       </SheetContent>
     </Sheet>
+    {dev.unlocked && (
+      <Button type="button" variant="ghost" size="sm" aria-label={lockLabel} title={lockLabel} onClick={lockDevMode} data-dev-mode-lock>
+        <PiLockSimpleBold className="size-5" aria-hidden />
+      </Button>
+    )}
+    </div>
   );
 }
