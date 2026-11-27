@@ -71,7 +71,7 @@ export function DevModeSheet() {
   };
 
   return (
-    <div className="flex shrink-0 items-center gap-1">
+    <div className="flex shrink-0 items-center max-sm:!px-0">
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
         <Button variant="ghost" size="sm" aria-label={triggerLabel} title={triggerLabel} data-dev-mode-open>
@@ -199,7 +199,7 @@ export function DevModeSheet() {
       </SheetContent>
     </Sheet>
     {dev.unlocked && (
-      <Button type="button" variant="ghost" size="sm" aria-label={lockLabel} title={lockLabel} onClick={lockDevMode} data-dev-mode-lock>
+      <Button type="button" variant="ghost" size="sm" aria-label={lockLabel} title={lockLabel} onClick={lockDevMode} className="px-2" data-dev-mode-lock>
         <PiLockSimpleBold className="size-5" aria-hidden />
       </Button>
     )}
