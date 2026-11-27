@@ -10,33 +10,128 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as HangoutRouteImport } from './routes/hangout'
+import { Route as QuestsRouteImport } from './routes/quests'
+import { Route as RosterRouteImport } from './routes/roster'
+import { Route as ApiDevModeRouteImport } from './routes/api/dev-mode'
+import { Route as ApiHangoutRouteImport } from './routes/api/hangout'
+import { Route as ApiOwnPowerRouteImport } from './routes/api/own-power'
+import { Route as ApiProgressCodeRouteImport } from './routes/api/progress-code'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const HangoutRoute = HangoutRouteImport.update({
+  id: '/hangout',
+  path: '/hangout',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const QuestsRoute = QuestsRouteImport.update({
+  id: '/quests',
+  path: '/quests',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RosterRoute = RosterRouteImport.update({
+  id: '/roster',
+  path: '/roster',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiDevModeRoute = ApiDevModeRouteImport.update({
+  id: '/api/dev-mode',
+  path: '/api/dev-mode',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiHangoutRoute = ApiHangoutRouteImport.update({
+  id: '/api/hangout',
+  path: '/api/hangout',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiOwnPowerRoute = ApiOwnPowerRouteImport.update({
+  id: '/api/own-power',
+  path: '/api/own-power',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiProgressCodeRoute = ApiProgressCodeRouteImport.update({
+  id: '/api/progress-code',
+  path: '/api/progress-code',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/hangout': typeof HangoutRoute
+  '/quests': typeof QuestsRoute
+  '/roster': typeof RosterRoute
+  '/api/dev-mode': typeof ApiDevModeRoute
+  '/api/hangout': typeof ApiHangoutRoute
+  '/api/own-power': typeof ApiOwnPowerRoute
+  '/api/progress-code': typeof ApiProgressCodeRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/hangout': typeof HangoutRoute
+  '/quests': typeof QuestsRoute
+  '/roster': typeof RosterRoute
+  '/api/dev-mode': typeof ApiDevModeRoute
+  '/api/hangout': typeof ApiHangoutRoute
+  '/api/own-power': typeof ApiOwnPowerRoute
+  '/api/progress-code': typeof ApiProgressCodeRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/hangout': typeof HangoutRoute
+  '/quests': typeof QuestsRoute
+  '/roster': typeof RosterRoute
+  '/api/dev-mode': typeof ApiDevModeRoute
+  '/api/hangout': typeof ApiHangoutRoute
+  '/api/own-power': typeof ApiOwnPowerRoute
+  '/api/progress-code': typeof ApiProgressCodeRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/hangout'
+    | '/quests'
+    | '/roster'
+    | '/api/dev-mode'
+    | '/api/hangout'
+    | '/api/own-power'
+    | '/api/progress-code'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/hangout'
+    | '/quests'
+    | '/roster'
+    | '/api/dev-mode'
+    | '/api/hangout'
+    | '/api/own-power'
+    | '/api/progress-code'
+  id:
+    | '__root__'
+    | '/'
+    | '/hangout'
+    | '/quests'
+    | '/roster'
+    | '/api/dev-mode'
+    | '/api/hangout'
+    | '/api/own-power'
+    | '/api/progress-code'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  HangoutRoute: typeof HangoutRoute
+  QuestsRoute: typeof QuestsRoute
+  RosterRoute: typeof RosterRoute
+  ApiDevModeRoute: typeof ApiDevModeRoute
+  ApiHangoutRoute: typeof ApiHangoutRoute
+  ApiOwnPowerRoute: typeof ApiOwnPowerRoute
+  ApiProgressCodeRoute: typeof ApiProgressCodeRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +143,67 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/hangout': {
+      id: '/hangout'
+      path: '/hangout'
+      fullPath: '/hangout'
+      preLoaderRoute: typeof HangoutRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/quests': {
+      id: '/quests'
+      path: '/quests'
+      fullPath: '/quests'
+      preLoaderRoute: typeof QuestsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/roster': {
+      id: '/roster'
+      path: '/roster'
+      fullPath: '/roster'
+      preLoaderRoute: typeof RosterRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/dev-mode': {
+      id: '/api/dev-mode'
+      path: '/api/dev-mode'
+      fullPath: '/api/dev-mode'
+      preLoaderRoute: typeof ApiDevModeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/hangout': {
+      id: '/api/hangout'
+      path: '/api/hangout'
+      fullPath: '/api/hangout'
+      preLoaderRoute: typeof ApiHangoutRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/own-power': {
+      id: '/api/own-power'
+      path: '/api/own-power'
+      fullPath: '/api/own-power'
+      preLoaderRoute: typeof ApiOwnPowerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/progress-code': {
+      id: '/api/progress-code'
+      path: '/api/progress-code'
+      fullPath: '/api/progress-code'
+      preLoaderRoute: typeof ApiProgressCodeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  HangoutRoute: HangoutRoute,
+  QuestsRoute: QuestsRoute,
+  RosterRoute: RosterRoute,
+  ApiDevModeRoute: ApiDevModeRoute,
+  ApiHangoutRoute: ApiHangoutRoute,
+  ApiOwnPowerRoute: ApiOwnPowerRoute,
+  ApiProgressCodeRoute: ApiProgressCodeRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

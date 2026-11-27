@@ -1,0 +1,172 @@
+// Quests: 13 long goals, each earning a quest fighter for good once it is complete and claimed.
+// Progress is counted from finished fights and saved in this browser (localStorage), like Story progress.
+// The arena screen reports each finished fight with `recordFight` and each crowned champion with `recordTournament`.
+// The same save keeps the new-generation fighters won by luck after a Story boss win (`rollNewGen`), and whether the
+// secret boss Zenith has been beaten (`breakSeal`), which frees Wisp and Boreal from its crown's outer seal, and
+// whether it has been beaten in its secret phase (`breakHeart`), which frees the four in the heart of the crown and
+// opens Zenith's own Story chapter (`zenithStoryOpen`).
+import { useEffect, useState } from "react";
+import { HEART_IDS, NEWGEN_IDS, QUESTERS, SEAL_IDS, type Power } from "./fighters";
+import { isDevMode, useDevMode } from "./dev-mode";
+import { loadDevUnlocks, useDevUnlocks } from "./dev-unlocks";
+
+/** What the arena counts toward quests. */
+export type Stat = "fights" | "kos" | "tournaments" | "bosses" | "forms";
+export type Stats = Record<Stat, number>;
+
+export type Goal = { stat: Stat; need: number };
+export type Quest = {
+  id: string;
+  /** The fighter it earns; null while that fighter has not been added to the game yet. */
+  reward: Power | null;
+  goals: Goal[];
+};
+
+export const QUESTS: Quest[] = [
+  { id: "fold", reward: "spatio", goals: [{ stat: "fights", need: 3 }, { stat: "kos", need: 30 }] },
+  { id: "gameover", reward: "hexizon", goals: [{ stat: "tournaments", need: 1 }, { stat: "bosses", need: 1 }, { stat: "forms", need: 3 }] },
+  { id: "gamma", reward: "gamma", goals: [{ stat: "kos", need: 75 }, { stat: "forms", need: 7 }, { stat: "bosses", need: 1 }] },
+  { id: "speed", reward: "velo", goals: [{ stat: "fights", need: 15 }, { stat: "kos", need: 110 }, { stat: "tournaments", need: 1 }] },
+  { id: "portal", reward: "portal", goals: [{ stat: "fights", need: 30 }, { stat: "forms", need: 15 }, { stat: "tournaments", need: 1 }, { stat: "bosses", need: 1 }] },
+  { id: "encore", reward: "sono", goals: [{ stat: "fights", need: 45 }, { stat: "kos", need: 190 }, { stat: "forms", need: 22 }] },
+  { id: "cranes", reward: "paper", goals: [{ stat: "fights", need: 60 }, { stat: "forms", need: 30 }, { stat: "tournaments", need: 1 }, { stat: "bosses", need: 1 }] },
+  { id: "facet", reward: "crys", goals: [{ stat: "fights", need: 70 }, { stat: "kos", need: 280 }, { stat: "forms", need: 35 }, { stat: "bosses", need: 1 }] },
+  { id: "dunes", reward: "sand", goals: [{ stat: "fights", need: 85 }, { stat: "kos", need: 320 }, { stat: "tournaments", need: 1 }, { stat: "bosses", need: 1 }] },
+  { id: "before", reward: "pastrift", goals: [{ stat: "fights", need: 100 }, { stat: "kos", need: 380 }, { stat: "forms", need: 40 }, { stat: "bosses", need: 1 }] },
+  { id: "quicksilver", reward: "merc", goals: [{ stat: "fights", need: 115 }, { stat: "kos", need: 440 }, { stat: "tournaments", need: 1 }, { stat: "bosses", need: 1 }] },
+  { id: "gold", reward: "alch", goals: [{ stat: "fights", need: 130 }, { stat: "kos", need: 500 }, { stat: "forms", need: 50 }, { stat: "bosses", need: 1 }] },
+  { id: "heir", reward: "nadir", goals: [{ stat: "fights", need: 145 }, { stat: "kos", need: 560 }, { stat: "forms", need: 55 }, { stat: "tournaments", need: 1 }, { stat: "bosses", need: 1 }] },
+];
+
+const KEY = "npc-arena-quests";
+const CHANGED = "npc-arena-quests-changed";
+
+export type QuestSave = { stats: Stats; claimed: string[]; newgen: Power[]; sealBroken: boolean; heartFreed: boolean };
+const EMPTY: QuestSave = { stats: { fights: 0, kos: 0, tournaments: 0, bosses: 0, forms: 0 }, claimed: [], newgen: [], sealBroken: false, heartFreed: false };
+
+export function loadQuests(): QuestSave {
+  try {
+    const raw = JSON.parse(localStorage.getItem(KEY) ?? "null");
+    if (!raw || typeof raw !== "object") return EMPTY;
+    const stats = { ...EMPTY.stats };
+    for (const k of Object.keys(stats) as Stat[]) stats[k] = Math.max(0, Math.floor(Number(raw.stats?.[k]) || 0));
+    const claimed = Array.isArray(raw.claimed) ? raw.claimed.filter((x: unknown): x is string => typeof x === "string" && QUESTS.some((q) => q.id === x)) : [];
+    const newgen = Array.isArray(raw.newgen) ? NEWGEN_IDS.filter((p) => raw.newgen.includes(p)) : [];
+    return { stats, claimed: [...new Set<string>(claimed)], newgen, sealBroken: raw.sealBroken === true, heartFreed: raw.heartFreed === true };
+  } catch {
+    return EMPTY;
+  }
+}
+
+function save(q: QuestSave) {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(q));
+    window.dispatchEvent(new Event(CHANGED));
+  } catch {
+    // storage blocked: progress just isn't kept
+  }
+}
+
+function bump(add: Partial<Stats>) {
+  const q = loadQuests();
+  for (const [k, v] of Object.entries(add) as [Stat, number][]) q.stats[k] += Math.max(0, Math.floor(v));
+  save(q);
+}
+
+/** A fight that played to the end: how many fell, how many forms broke loose, and whether it was a Story boss beaten. */
+export const recordFight = (o: { kos: number; forms: number; boss: boolean }) => bump({ fights: 1, kos: o.kos, forms: o.forms, bosses: o.boss ? 1 : 0 });
+export const recordTournament = () => bump({ tournaments: 1 });
+
+export const goalDone = (s: Stats, g: Goal) => s[g.stat] >= g.need;
+export const questReady = (s: Stats, q: Quest) => !!q.reward && q.goals.every((g) => goalDone(s, g));
+
+/** Claim a finished quest: its fighter joins the roster for good. */
+export function claimQuest(id: string): boolean {
+  const q = loadQuests();
+  const quest = QUESTS.find((x) => x.id === id);
+  if (!quest || !questReady(q.stats, quest) || q.claimed.includes(id)) return false;
+  q.claimed.push(id);
+  save(q);
+  return true;
+}
+
+/** The chance that a Story boss win brings in one new-generation fighter not yet unlocked. */
+export const NEWGEN_CHANCE = 0.4;
+
+/** After a Story boss win: with `NEWGEN_CHANCE`, one still-locked new-generation fighter joins for good. Returns who joined. */
+export function rollNewGen(): Power | null {
+  const q = loadQuests();
+  const locked = NEWGEN_IDS.filter((p) => !q.newgen.includes(p));
+  if (!locked.length || Math.random() >= NEWGEN_CHANCE) return null;
+  const won = locked[Math.floor(Math.random() * locked.length)];
+  q.newgen.push(won);
+  save(q);
+  return won;
+}
+
+/** The secret boss Zenith has just been beaten: Wisp and Boreal are freed for good. Returns who joined (none the second time). */
+export function breakSeal(): Power[] {
+  const q = { ...loadQuests() };
+  if (q.sealBroken) return [];
+  q.sealBroken = true;
+  save(q);
+  return [...SEAL_IDS];
+}
+
+/** Zenith has just been beaten in its secret phase: the heart of its crown breaks, its four join for good and its
+ * Story chapter opens. Returns who joined (none the second time). */
+export function breakHeart(): Power[] {
+  const q = { ...loadQuests() };
+  if (q.heartFreed) return [];
+  q.sealBroken = true;
+  q.heartFreed = true;
+  save(q);
+  return [...HEART_IDS];
+}
+
+/** Whether Zenith's own Story chapter is open: it has been beaten in its secret phase (or developer mode is on). */
+export const zenithStoryOpen = (): boolean => isDevMode() || loadQuests().heartFreed;
+
+/** Whether Legacy's Chapter 6 is open: Zenith has joined the roster (beaten once, its outer seal broken), or developer mode is on. */
+export const legacyFinaleOpen = (): boolean => isDevMode() || loadQuests().sealBroken;
+
+/** Whether Zenith itself has joined the roster: it has been beaten once (its outer seal broken), or developer mode is on. */
+export const zenithJoined = (q: QuestSave, dev: boolean): boolean => dev || q.sealBroken;
+
+/** Quest fighters this browser has earned, in quest order, then the new-generation fighters it has unlocked, then the fourth generation once freed. */
+export const unlockedOf = (q: QuestSave): Power[] => [
+  ...QUESTS.filter((x) => x.reward && q.claimed.includes(x.id)).map((x) => x.reward!).filter((p) => QUESTERS.some((d) => d.id === p)),
+  ...NEWGEN_IDS.filter((p) => q.newgen.includes(p)),
+  ...(q.sealBroken ? SEAL_IDS : []),
+  ...(q.heartFreed ? HEART_IDS : []),
+];
+
+/** Every quest fighter and every new-generation fighter: what developer mode opens. */
+export const everyUnlock = (): Power[] => unlockedOf({ stats: EMPTY.stats, claimed: QUESTS.map((x) => x.id), newgen: [...NEWGEN_IDS], sealBroken: true, heartFreed: true });
+
+/** The fighters this browser can pick right now: everything in developer mode, otherwise what it has earned plus any picked to stay unlocked for good. */
+export const unlockedNow = (): Power[] =>
+  isDevMode() ? everyUnlock() : [...new Set([...unlockedOf(loadQuests()), ...loadDevUnlocks().fighters])];
+
+/** `unlockedNow` for a screen, read after the first render. */
+export function useUnlocked(): Power[] {
+  const q = useQuests();
+  const perm = useDevUnlocks().fighters;
+  return useDevMode().on ? everyUnlock() : [...new Set([...unlockedOf(q), ...perm])];
+}
+
+/** The saved quest progress, read after the first render so the server and browser agree. */
+export function useQuests(): QuestSave {
+  const [q, setQ] = useState<QuestSave>(EMPTY);
+  useEffect(() => {
+    const read = () => setQ(loadQuests());
+    read();
+    window.addEventListener(CHANGED, read);
+    window.addEventListener("storage", read);
+    return () => {
+      window.removeEventListener(CHANGED, read);
+      window.removeEventListener("storage", read);
+    };
+  }, []);
+  return q;
+}

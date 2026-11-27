@@ -28,3 +28,10 @@ use the editor.
   own key and store it in Secrets.
 - **Secrets.** Lovable manages them. Do not put secret values in the repo.
 <!-- LOVABLE:END -->
+
+## Project rules
+
+- tsconfig keeps `noUncheckedIndexedAccess`, `noPropertyAccessFromIndexSignature` and `exactOptionalPropertyTypes` off: the imported game code was written without them.
+- Progress saves are reached only through `/api/progress-code` with the service-role client; the table has no browser access, and codes are stored as SHA-256 hashes only.
+- AI calls (`/api/hangout`, `/api/own-power`) use `@lovable.dev/ai-gateway` `generateMessage`; regenerate `src/generated/ai-gateway` with `bunx ai-gateway generate --model <slug>` when a model changes.
+- The developer code is checked server-side in `src/lib/dev-code.server.ts`; never import it from browser code.

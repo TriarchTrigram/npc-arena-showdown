@@ -1,0 +1,104 @@
+{
+  "source": "code-archive",
+  "app_name": "NPC Arena",
+  "capabilities": [
+    {
+      "capability": "code",
+      "source": "TanStack Start app (routes /, /roster, /quests, /hangout; game engine libs, components, strings)",
+      "outcome": "migrate",
+      "status": "verified",
+      "next_action": "None: all four pages render with no browser errors, build OK"
+    },
+    {
+      "capability": "schema",
+      "source": "progress_saves table (drizzle/migrations/0000_create_progress_saves.sql)",
+      "outcome": "migrate",
+      "status": "verified",
+      "next_action": "None: progress_saves created in Lovable Cloud"
+    },
+    {
+      "capability": "records",
+      "source": "progress_saves rows (no record export attached)",
+      "outcome": "migrate",
+      "status": "pending",
+      "next_action": "Request CSV/JSON export of progress_saves from the source project's Lovable Cloud database"
+    },
+    {
+      "capability": "auth_identities",
+      "source": "None: app is public, players use anonymous progress codes",
+      "outcome": "not_applicable",
+      "status": "verified",
+      "next_action": "None: no sign-in call sites; players use anonymous progress codes"
+    },
+    {
+      "capability": "authorization",
+      "source": "Server-side progress code hash lookup; developer code check",
+      "outcome": "migrate",
+      "status": "verified",
+      "next_action": "None: wrong developer code and wrong progress code are refused; save, load and update verified"
+    },
+    {
+      "capability": "uploaded_file_bytes",
+      "source": "public/favicon.ico",
+      "outcome": "migrate",
+      "status": "verified",
+      "next_action": "None: favicon copied"
+    },
+    {
+      "capability": "external_providers",
+      "source": "Lovable AI Gateway (/api/hangout, /api/own-power); YouTube embeds",
+      "outcome": "migrate",
+      "status": "verified",
+      "next_action": "None: /api/own-power and /api/hangout answered through the AI Gateway (anthropic/claude-haiku-5-5)"
+    },
+    {
+      "capability": "public_endpoints",
+      "source": "/api/dev-mode, /api/progress-code, /api/hangout, /api/own-power",
+      "outcome": "migrate",
+      "status": "verified",
+      "next_action": "None: all four endpoints exercised"
+    },
+    {
+      "capability": "callbacks",
+      "source": "None",
+      "outcome": "not_applicable",
+      "status": "verified",
+      "next_action": "None"
+    },
+    {
+      "capability": "webhooks",
+      "source": "None",
+      "outcome": "not_applicable",
+      "status": "verified",
+      "next_action": "None"
+    },
+    {
+      "capability": "schedules",
+      "source": "None",
+      "outcome": "not_applicable",
+      "status": "verified",
+      "next_action": "None"
+    },
+    {
+      "capability": "secrets",
+      "source": "LOVABLE_API_KEY (platform managed); LOVABLE_DB_MIGRATION_URL (platform metadata)",
+      "outcome": "not_applicable",
+      "status": "verified",
+      "next_action": "None: no user-owned keys"
+    },
+    {
+      "capability": "cutover",
+      "source": "Published at revived-ideas-vault.lovable.app",
+      "outcome": "migrate",
+      "status": "pending",
+      "next_action": "User publishes this project when ready"
+    },
+    {
+      "capability": "verification",
+      "source": "Build, pages, API endpoints, save/load, AI",
+      "outcome": "migrate",
+      "status": "verified",
+      "next_action": "None: build, pages, save/load/update, AI endpoints checked; test save removed"
+    }
+  ]
+}
