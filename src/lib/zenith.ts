@@ -149,7 +149,7 @@ export function possessed(def: FighterDef): FighterDef {
 export const ZENITH: FighterDef = {
   id: "lux", boss: "zenith", name: "Zenith", power: "The Highest Point", role: "control",
   ability: "The arena's secret champion and the strongest boss there is. It waits at the highest point of the sky with the fourth generation sealed in its crown of stars, comes down only for someone who calls it, and fights with its bare fists or the Millennium Scepter, whichever it decides.",
-  color: NIGHT, glow: GOLD, hp: 1000, speed: 104,
+  color: NIGHT, glow: GOLD, hp: 1100, speed: 108,
   // the fight starts it in a mode it picks itself (see the engine); Fist Mode's opening moves stand in until then
   moves: FIST[0],
 };

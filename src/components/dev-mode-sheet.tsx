@@ -76,7 +76,7 @@ export function DevModeSheet() {
           )}
         </Button>
       </SheetTrigger>
-      <SheetContent side="right" className="w-full sm:max-w-md" data-dev-mode-sheet>
+      <SheetContent side="right" className="flex w-full flex-col sm:max-w-md" data-dev-mode-sheet>
         <SheetHeader>
           <SheetTitle className="font-display text-xl">
             <Text id="devMode.title" />
@@ -85,7 +85,7 @@ export function DevModeSheet() {
             <Text id="devMode.intro" />
           </SheetDescription>
         </SheetHeader>
-        <SheetBody className="gap-6">
+        <SheetBody className="min-h-0 gap-6 overflow-y-scroll [scrollbar-color:var(--color-muted-foreground)_transparent] [scrollbar-gutter:stable] [scrollbar-width:thin]">
           {!dev.unlocked ? (
             <section className="flex flex-col gap-3">
               <Text id="devMode.lockedBody" as="p" className="text-sm text-foreground-secondary" />
