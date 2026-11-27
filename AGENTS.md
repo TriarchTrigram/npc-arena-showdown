@@ -37,3 +37,4 @@ use the editor.
 - The developer code is checked server-side in `src/lib/dev-code.server.ts`; never import it from browser code.
 - Combat numbers for guarding, parries, counters and combo chains live in `src/lib/combat-rules.ts` (pure, tested in `src/test/combat-rules.test.ts`); the engine imports them rather than inlining values.
 - Player control goes through the engine's `playerInput` / `pressPlayer` and `Game.control`; the arena screen only maps keys, so fight logic stays in `arena-engine.ts`.
+- The unlock-everything code is the `DEV_UNLOCK_ALL_CODE` secret, read in `/api/dev-mode` and passed to `devCodeKind`; never put it in source, so it stays out of the repo and browser files.
