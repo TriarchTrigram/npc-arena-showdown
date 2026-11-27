@@ -2,7 +2,7 @@
   "arena": {
     "eyebrow": "Watch the powers clash",
     "title": "The arena",
-    "subtitle": "Pick your fighters, press Start and watch them battle it out on their own.",
+    "subtitle": "Pick your fighters, press Start and watch them battle it out on their own, or fight as one yourself.",
     "mode": {
       "label": "Mode",
       "story": "Story",
@@ -43,7 +43,10 @@
       "musicAria": "Music",
       "musicMute": "Mute music",
       "musicUnmute": "Turn music on",
-      "musicVolume": "Music volume"
+      "musicVolume": "Music volume",
+      "fight": "Fight yourself",
+      "fighting": "You're fighting",
+      "fightHint": "You control the fighter marked YOU. Move: A / D. Jump: W. Guard: hold S (tap it just before a hit lands to parry). Dash: Shift. Strike: J. Blast: K. Big move: L. Switch fighter: Q."
     },
     "status": {
       "ready": "Ready",

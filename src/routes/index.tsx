@@ -27,7 +27,7 @@ import { loadDevUnlocks, useDevUnlocks } from "@/lib/dev-unlocks";
 import { DevModeSheet } from "@/components/dev-mode-sheet";
 import { FusionSheet } from "@/components/fusion-sheet";
 import { FighterDot } from "@/components/fighter-dot";
-import { W, H, TEAM_COLORS, newGame, step, drawScene, buildBackdrop, buildMindscapeBackdrop, setPreFightWords, type Game, type FeedItem } from "@/lib/arena-engine";
+import { W, H, TEAM_COLORS, newGame, step, drawScene, playerInput, pressPlayer, clearPlayerInput, type PlayerPress, buildBackdrop, buildMindscapeBackdrop, setPreFightWords, type Game, type FeedItem } from "@/lib/arena-engine";
 import { arenaSound } from "@/lib/arena-sound";
 import { arenaMusic, bossDuelTheme, chapterTheme, type DuelBoss, type MusicTheme } from "@/lib/arena-music";
 import { MusicControl } from "@/components/music-control";
@@ -312,6 +312,44 @@ function Home() {
   const speedRef = useRef(1);
   statusRef.current = status;
   speedRef.current = speed;
+  // Playing a fighter yourself instead of watching
+  const [control, setControl] = useState(false);
+  const controlRef = useRef(false);
+  controlRef.current = control;
+  useEffect(() => {
+    clearPlayerInput();
+    if (!control || screen !== "arena") return;
+    const HOLD: Record<string, "left" | "right" | "guard"> = { a: "left", arrowleft: "left", d: "right", arrowright: "right", s: "guard", arrowdown: "guard" };
+    const TAP: Record<string, PlayerPress> = { w: "jump", arrowup: "jump", " ": "jump", shift: "dash", j: "strike", k: "blast", l: "ult", q: "swap" };
+    const typing = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      return !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable);
+    };
+    const down = (e: KeyboardEvent) => {
+      if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
+      const key = e.key.toLowerCase();
+      const hold = HOLD[key];
+      const tap = TAP[key];
+      if (!hold && !tap) return;
+      // keep the page from scrolling or pressing a focused button while fighting
+      if (statusRef.current === "running") e.preventDefault();
+      if (hold) playerInput[hold] = true;
+      else if (tap && !e.repeat) pressPlayer(tap);
+    };
+    const up = (e: KeyboardEvent) => {
+      const hold = HOLD[e.key.toLowerCase()];
+      if (hold) playerInput[hold] = false;
+    };
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    window.addEventListener("blur", clearPlayerInput);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+      window.removeEventListener("blur", clearPlayerInput);
+      clearPlayerInput();
+    };
+  }, [control, screen]);
 
   const validFor = (m: Mode, n: number) =>
     m === "story" || m === "legacy" ? stage <= cleared || dev : m === "duel" ? n === 2 : m === "teams" ? n >= teamCount * 2 && n <= 16 : m === "teamTournament" ? n % teamSize === 0 && n / teamSize >= 3 && n <= MAX_PICKS : m === "juggernaut" ? n === CHALLENGERS && !picked.includes(jugg) : n >= 3 && n <= 16;
@@ -494,6 +532,7 @@ function Home() {
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
       const g = gameRef.current;
+      if (g) g.control = controlRef.current;
       if (g && statusRef.current === "running") {
         // the entrances and a rage cutscene always play at normal speed
         const sub = g.cut || g.intro ? 1 : speedRef.current;
@@ -802,6 +841,9 @@ function Home() {
                 {status !== "ready" && (
                   <Button variant="outline" onClick={restart}><Text id="arena.controls.restart" /></Button>
                 )}
+                <Button variant={control ? "default" : "outline"} aria-pressed={control} onClick={(e) => { setControl((c) => !c); e.currentTarget.blur(); }}>
+                  <Text id={control ? "arena.controls.fighting" : "arena.controls.fight"} />
+                </Button>
                 {tourMode && tour && tour.total > 0 && !champ && (
                   <Text id="arena.bracket.matchOf" vars={{ n: Math.min(tour.played + (status === "finished" ? 0 : 1), tour.total), total: tour.total }} className="text-sm text-muted-foreground tabular-nums" />
                 )}
@@ -829,6 +871,7 @@ function Home() {
                 </div>
                 {musicControl}
               </div>
+              {control && <Text id="arena.controls.fightHint" as="p" className="text-sm text-muted-foreground" />}
               <div className="relative">
                 <canvas
                   ref={canvasRef}

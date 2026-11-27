@@ -1,6 +1,7 @@
 // Side-view stickman fight engine for the arena canvas. Runs entirely in the browser.
 import { DEF_BY_ID, customElements, isNewGen, isQuester, juggernautOf, rosterIdOf, type Anim, type BossDesign, type FighterDef, type Move, type Power, type StatusEffect } from "./fighters";
 import type { Sfx } from "./arena-sound";
+import { COMBO_WINDOW, COUNTER_BONUS, COUNTER_WINDOW, GUARD_BREAK_DMG, GUARD_BREAK_STUN, GUARD_DAMAGE, PARRY_WINDOW, comboBonus, guardOutcome } from "./combat-rules";
 import { drawMarks, drawFocus, drawBars, drawNameCards, drawCutIn, MARK_LIFE, CUTIN_LEN, type Mark, type CutIn, type Focus, type NameCard } from "./arena-cinema";
 import { CHOSEN_INTROS } from "./chosen-intros";
 import { INTROS, BOSS_INTROS, fusionIntro, INTRO_LEN, INTRO_ARRIVED, type IntroBurst, type IntroPose, type IntroSpec } from "./spawn-intros";
@@ -691,6 +692,12 @@ export type Fighter = {
   clashAir: boolean; kneelT: number;
   // brain
   aggro: number; targetKey: number | null; reacted: number; comboT: number;
+  /** Guarding: seconds the guard stays up, until it can be raised again, and left in the parry window. */
+  guardT: number; guardCd: number; parryT: number;
+  /** Seconds left in which the next hit lands as a counter (after a parry). */
+  counterT: number;
+  /** Combo chain: hits landed in a row, and seconds before it lapses. */
+  chain: number; chainT: number;
   // team fights: -1 means everyone is an opponent
   team: number;
   // juggernaut: always flying on wings, holding at hoverY
@@ -760,6 +767,11 @@ export type Game = {
   feed: FeedItem[];
   /** Sounds queued this frame; the arena screen plays and clears them. */
   sfx: Sfx[];
+  /** The player has asked to fight: one fighter takes keyboard input instead of thinking for itself. */
+  control: boolean;
+  /** The fighter the player controls, if any, and whether it fell with no team-mate to take over. */
+  player: number | null;
+  playerOut: boolean;
   shake: number;
   hitstop: number;
   ending: number;
@@ -875,7 +887,7 @@ export function newGame(ids: (Power | FighterDef)[], preview = false, teams?: nu
       dashT: 0, dashDir: 0, dashCd: rand(0, 0.6), iframeT: 0, airDashed: false,
       ghosts: [], ghostT: 0,
       clashAir: false, kneelT: 0,
-      aggro: clamp(AGGRO[def.role] + rand(-0.08, 0.08), 0.2, 0.95), targetKey: null, reacted: -1, comboT: 0,
+      aggro: clamp(AGGRO[def.role] + rand(-0.08, 0.08), 0.2, 0.95), targetKey: null, reacted: -1, comboT: 0, guardT: 0, guardCd: 0, parryT: 0, counterT: 0, chain: 0, chainT: 0,
       team: teamMode ? teams![i] : -1,
       jugg: isJugg, hoverY,
       form: null, rageT: 0,
@@ -898,7 +910,7 @@ export function newGame(ids: (Power | FighterDef)[], preview = false, teams?: nu
   gravK = 1;
   return {
     t: 0, fighters, projectiles: [], beams: [], eruptions: [], zones: [], particles: [], pops: [], waves: [], fx: [], feed: [], sfx: [],
-    shake: 0, hitstop: 0, ending: 0, over: false, winner: null, preview, duel: n === 2 && !teamMode,
+    control: false, player: null, playerOut: false, shake: 0, hitstop: 0, ending: 0, over: false, winner: null, preview, duel: n === 2 && !teamMode,
     teamMode, winnerId: null, winnerTeam: null, cut: null,
     intro: preview || n === 0 ? null : { t: 0, max: pre ? pre.start + pre.spec.len + 0.3 : introEnd }, pre,
     realm: null, realmOut: null, annis: [], stopUntil: 0, eclipseUntil: 0, flash: 0,
@@ -1231,6 +1243,30 @@ function hurt(g: Game, f: Fighter, amount: number, by: Fighter | null) {
   if (f.hp <= 0) knockOut(g, f, by ?? (f.lastAttacker != null ? g.fighters[f.lastAttacker] : null));
 }
 
+/** A guard raised at just the right moment: the blow does nothing, a close attacker is thrown off balance, and the defender's next hit is a counter. */
+function parried(g: Game, a: Fighter, o: Fighter, move: Move, dir: number) {
+  const c = center(o);
+  o.guardT = 0; o.parryT = 0; o.guardCd = 0.3;
+  o.counterT = COUNTER_WINDOW;
+  o.iframeT = Math.max(o.iframeT, 0.2);
+  o.think = 0; o.comboT = 0.8;
+  a.chain = 0; a.chainT = 0;
+  const close = move.kind === "melee" || move.kind === "dash" || move.kind === "blink";
+  if (close && a.alive && !a.jugg) {
+    a.act = null; a.dashT = 0;
+    a.hurtT = Math.max(a.hurtT, 0.5);
+    a.recoil = 0.6;
+    a.vx = -dir * 220;
+  }
+  pop(g, c.x, c.y - 84 * o.scale, "PARRY", "white", 22, 0.9);
+  impact(g, c.x - dir * 30 * o.scale, c.y, -dir, 40 * o.scale, o.def.color, o.def.glow, true);
+  g.particles.push({ x: c.x - dir * 30 * o.scale, y: c.y, vx: 0, vy: 0, life: 0.18, max: 0.18, size: 34 * o.scale, color: "white", shape: "ring", grav: 0, add: true, rot: 0 });
+  sfx(g, { k: "clash" });
+  g.hitstop = Math.max(g.hitstop, 0.09);
+  g.shake = Math.max(g.shake, 7);
+  kickCam(g, -dir * 5, 2);
+}
+
 function hit(g: Game, a: Fighter, o: Fighter, move: Move, power: Power, dir: number, mult = 1) {
   const prev = paint;
   paint = rageOf(a);
@@ -1266,16 +1302,35 @@ function landHit(g: Game, a: Fighter, o: Fighter, move: Move, power: Power, dir:
     o.x += (Math.sign(o.x - a.x) || 1) * 26 * o.scale;
     return false;
   }
-  let dmg = move.dmg * mult * (a.jugg ? JUGG_DMG : 1) * (rg?.dmg ?? 1) * (og?.guard ?? 1) * (warded(g, o) ? SUMMONER.ward : 1);
+  // a raised guard only covers the front: timed well it parries, a heavy blow breaks it, the rest is blocked
+  const guard = o.guardT > 0 && o.facing === -Math.sign(dir) ? guardOutcome(move.dmg * mult * (a.jugg ? JUGG_DMG : 1), o.parryT > 0) : null;
+  if (guard === "parry") { parried(g, a, o, move, dir); return false; }
+  const blocked = guard === "block";
+  const chainBefore = a.chainT > 0 ? a.chain : 0;
+  const countering = a.counterT > 0;
+  let dmg = move.dmg * mult * (a.jugg ? JUGG_DMG : 1) * (rg?.dmg ?? 1) * (og?.guard ?? 1) * (warded(g, o) ? SUMMONER.ward : 1) * comboBonus(chainBefore) * (countering ? COUNTER_BONUS : 1);
   const crit = move.crit != null && Math.random() < move.crit;
   if (crit) dmg *= 1.8;
+  if (blocked) dmg *= GUARD_DAMAGE;
+  if (countering) {
+    a.counterT = 0;
+    pop(g, c.x, c.y - 84 * o.scale, "COUNTER", a.def.glow, 20, 0.8);
+  }
+  if (guard === "break") {
+    o.guardT = 0; o.parryT = 0;
+    if (!shrugsOff(o, "stun")) o.status.stun = Math.max(o.status.stun, g.t + GUARD_BREAK_STUN * (o.jugg ? 0.33 : 1));
+    pop(g, c.x, c.y - 84 * o.scale, "GUARD BREAK", "hsl(0 90% 66%)", 20, 0.9);
+  }
+  // a blocked blow ends the attacker's chain; a clean one adds to it and ends the victim's
+  if (blocked) { a.chain = 0; a.chainT = 0; }
+  else { a.chain = chainBefore + 1; a.chainT = COMBO_WINDOW; o.chain = 0; o.chainT = 0; }
   dmg = Math.round(dmg * 10) / 10;
   sfx(g, { k: "hit", power, move: move.id, kind: move.kind, anim: move.anim, dmg, crit });
   o.flash = 0.1;
   if (power !== "shift") o.lastHitBy = power;
   const weight = o.jugg ? 0.5 : 1;
-  if (move.kb) o.vx = dir * move.kb * weight * (rg?.kb ?? 1);
-  if (move.lift) { o.vy = move.lift * weight; o.onGround = false; }
+  if (move.kb) o.vx = dir * move.kb * weight * (rg?.kb ?? 1) * (blocked ? 0.3 : 1);
+  if (move.lift && !blocked) { o.vy = move.lift * weight; o.onGround = false; }
   if (rg && a.def.id === "pyro") o.status.burn = Math.max(o.status.burn, g.t + (rg.kind === "perfected" ? 2 : 1.2) * (o.jugg ? 0.33 : 1));
   // Mystic Mode drains a share of every hit back as health, drawn as motes flying home
   if (rg?.drain && a.alive) {
@@ -1299,15 +1354,18 @@ function landHit(g: Game, a: Fighter, o: Fighter, move: Move, power: Power, dir:
   // Nightmare Mode is immune to stuns and freezes: the effect never lands and never breaks its attack
   const immune = shrugsOff(o, move.status);
   if (immune) pop(g, c.x, c.y - 64 * o.scale, "immune", og?.b ?? o.def.glow, 15, 0.5);
-  else if (move.status) o.status[move.status] = Math.max(o.status[move.status], g.t + (move.statusDur ?? 1) * (o.jugg ? 0.33 : 1));
-  const locks = !immune && (move.status === "stun" || move.status === "freeze");
-  const heavy = dmg >= 9 || move.lift != null || locks;
+  else if (move.status && !blocked) o.status[move.status] = Math.max(o.status[move.status], g.t + (move.statusDur ?? 1) * (o.jugg ? 0.33 : 1));
+  const locks = !immune && !blocked && (move.status === "stun" || move.status === "freeze");
+  const heavy = !blocked && (dmg >= 9 || move.lift != null || locks);
   // a juggernaut shrugs off flinches: only a stun or freeze breaks its attack
   const breaks = o.jugg ? locks : heavy;
   if (breaks && o.act) o.act = null;
   o.kneelT = 0;
   if (breaks) o.dashT = 0;
-  o.hurtT = Math.max(o.hurtT, o.jugg ? 0.06 : heavy ? 0.32 : 0.16);
+  if (blocked) {
+    pop(g, c.x, c.y - 72 * o.scale, "block", o.def.glow, 14, 0.5);
+    emit(g, o.def.id, c.x - dir * 30 * o.scale, c.y, 5, 220);
+  } else o.hurtT = Math.max(o.hurtT, o.jugg ? 0.06 : heavy ? 0.32 : 0.16);
   emitMove(g, move, power, c.x - dir * 8, c.y, crit ? 18 : 10, crit ? 380 : 260);
   if (LOOKS[move.id]?.hit) moveFx(g, move.id, true, c.x - dir * 6, c.y, dir, o.scale, 0.4);
   // white impact star
@@ -1766,6 +1824,10 @@ function chooseTarget(g: Game, f: Fighter) {
     if (f.lastAttacker === o.key) sc -= 110;
     if (f.targetKey === o.key) sc -= 90;
     if (isOpen(g, o)) sc -= 140;
+    // leave a raised guard alone, deal with whoever is winding up at me, and gang up with team-mates
+    if (o.guardT > 0.15) sc += 70;
+    if (o.act && !o.act.fired && o.act.target === f.key) sc -= 60;
+    if (f.team >= 0 && g.fighters.some((m) => m !== f && m.alive && m.team === f.team && m.targetKey === o.key)) sc -= 45;
     if (sc < bs) { bs = sc; best = o; }
   }
   f.targetKey = best?.key ?? null;
@@ -1816,6 +1878,19 @@ function scoreMove(g: Game, f: Fighter, m: Move, target: Fighter) {
   if (m.eclipse) sc = g.eclipseUntil > g.t ? -10 : 30;
   if (m.kind === "annihilate") sc += 8;
   if (f.comboT > 0 && m.kind === "melee") sc += 14;
+  const close = m.kind === "melee" || m.kind === "blink" || m.kind === "dash";
+  const open = isOpen(g, target);
+  // a raised guard: break it with something heavy, don't feed it light blows
+  if (target.guardT > 0.1) sc += m.dmg * (f.jugg ? JUGG_DMG : 1) >= GUARD_BREAK_DMG ? 12 : close ? -9 : -4;
+  // punish an opening with the hardest thing in reach, cash in a counter, and keep a chain going with quick moves
+  if (open) sc += m.dmg * 0.4;
+  if (f.counterT > 0) sc += m.dmg * 0.5 + (close ? 6 : 0);
+  if (f.chainT > 0 && f.chain >= 2 && m.wind <= 0.25) sc += 6;
+  // don't burn a big move on someone nearly down, or trade blows up close when nearly down yourself
+  if (m.cd >= 5 && target.hp < m.dmg * 0.35 && m.kind !== "burst") sc -= 10;
+  if (f.hp / f.maxHp < 0.25 && close && !open) sc -= 5;
+  // catch a jumper with a launcher
+  if (!target.onGround && !target.jugg && m.lift != null && close) sc += 5;
   return sc + rand(0, 5);
 }
 
@@ -1850,6 +1925,19 @@ function startMove(g: Game, f: Fighter, move: Move, target: Fighter) {
   if (showCall) pop(g, f.x, f.y - bodyH(f) - 34, label, DEF_BY_ID[power].glow, g.duel ? 20 : 16, 1.1);
 }
 
+/** How much each kind of fighter likes to guard rather than dodge. */
+const GUARD_LIKE: Record<FighterDef["role"], number> = { tank: 0.3, support: 0.25, control: 0.22, trickster: 0.1, attacker: 0.1 };
+const canGuard = (f: Fighter) => steady(f) && !f.jugg && f.guardCd <= 0 && f.guardT <= 0;
+/** Raise a guard toward a threat for a moment. `parry` is how long the parry window stays open (0 for a plain block). */
+function startGuard(f: Fighter, fromX: number, hold: number, parry: number) {
+  f.guardT = hold;
+  f.parryT = parry;
+  f.guardCd = hold + 1.4;
+  f.facing = fromX >= f.x ? 1 : -1;
+  f.walkDir = 0;
+  return true;
+}
+
 /** Split-second defence: counter a strike, shoot down a shot, dash through or out, or jump. Returns true when it acted. */
 function react(g: Game, f: Fighter, target: Fighter, dt: number) {
   const s = f.scale;
@@ -1866,6 +1954,11 @@ function react(g: Game, f: Fighter, target: Fighter, dt: number) {
     if (counter && steady(f) && r < 0.3 + 0.45 * f.aggro) {
       startMove(g, f, counter, o); // meet it head on: a clash if the timing lines up
       return true;
+    }
+    // raise a guard instead: reading the timing right turns it into a parry
+    if (canGuard(f) && r < 0.3 + 0.45 * f.aggro + GUARD_LIKE[f.def.role]) {
+      const left = Math.max(0, oa.move.wind - oa.t);
+      return startGuard(f, o.x, left + 0.3, Math.random() < 0.22 ? left + 0.08 : 0);
     }
     if (dashReady && r < 0.85) {
       const away = Math.sign(f.x - o.x) || -f.facing;
@@ -1891,6 +1984,7 @@ function react(g: Game, f: Fighter, target: Fighter, dt: number) {
     }
     if (d < 150 && inBand && Math.random() < dt * 10) {
       if (dashReady && Math.random() < 0.55) return startDash(g, f, Math.sign(p.x - f.x) || f.facing); // through it
+      if (canGuard(f) && Math.random() < 0.35 + GUARD_LIKE[f.def.role]) return startGuard(f, p.x, 0.35, Math.random() < 0.2 ? 0.2 : 0);
       if (f.onGround) { jump(f, f.walkDir); return true; }
     }
   }
@@ -2062,7 +2156,7 @@ function summonThralls(g: Game, f: Fighter, n: number): number {
       dashT: 0, dashDir: 0, dashCd: rand(0.4, 1), iframeT: 0.8, airDashed: false,
       ghosts: [], ghostT: 0,
       clashAir: false, kneelT: 0,
-      aggro: clamp(AGGRO[def.role] + 0.1, 0.2, 0.95), targetKey: null, reacted: -1, comboT: 0,
+      aggro: clamp(AGGRO[def.role] + 0.1, 0.2, 0.95), targetKey: null, reacted: -1, comboT: 0, guardT: 0, guardCd: 0, parryT: 0, counterT: 0, chain: 0, chainT: 0,
       team: f.team,
       jugg: false, hoverY: GROUND - HOVER_HIGH * sc,
       form: null, rageT: 0,
@@ -2558,7 +2652,7 @@ export function joinScene(g: Game, def: FighterDef, x: number, team: number, fac
     dashT: 0, dashDir: 0, dashCd: rand(0.4, 1), iframeT: 0.8, airDashed: false,
     ghosts: [], ghostT: 0,
     clashAir: false, kneelT: 0,
-    aggro: clamp(AGGRO[def.role], 0.2, 0.95), targetKey: null, reacted: -1, comboT: 0,
+    aggro: clamp(AGGRO[def.role], 0.2, 0.95), targetKey: null, reacted: -1, comboT: 0, guardT: 0, guardCd: 0, parryT: 0, counterT: 0, chain: 0, chainT: 0,
     team,
     jugg: false, hoverY: GROUND - HOVER_HIGH * sc,
     form: null, rageT: 0,
@@ -2658,6 +2752,9 @@ function tickFighter(g: Game, f: Fighter, dt: number) {
   f.dashCd -= dt;
   f.iframeT -= dt;
   f.comboT -= dt;
+  f.guardT -= dt; f.guardCd -= dt; f.parryT -= dt; f.counterT -= dt; f.chainT -= dt;
+  if (f.chainT <= 0) f.chain = 0;
+  if (stunned || frozen) f.guardT = 0;
 
   if (frozen) {
     f.act = null;
@@ -2716,7 +2813,7 @@ function tickFighter(g: Game, f: Fighter, dt: number) {
       if (m.kind === "melee" && a.landed && a.t >= m.wind + m.act && target && !intro) {
         a.landed = false;
         const gap = Math.abs(target.x - f.x);
-        if (gap > 70 * s && gap < 300 && Math.random() < f.aggro * 0.75 && f.dashCd <= 0) {
+        if (gap > 70 * s && gap < 300 && Math.random() < f.aggro * 0.75 && f.dashCd <= 0 && f.key !== g.player) {
           f.act = null;
           f.facing = target.x >= f.x ? 1 : -1;
           startDash(g, f, f.facing);
@@ -2726,6 +2823,10 @@ function tickFighter(g: Game, f: Fighter, dt: number) {
       }
       if (f.act === a && a.t >= m.wind + m.act + m.rec) f.act = null;
     }
+  } else if (!locked && target && f.key === g.player) {
+    playerControl(g, f, target, dt);
+  } else if (!locked && target && f.guardT > 0) {
+    // holding a guard: stand firm behind it
   } else if (!locked && target) {
     const dx = target.x - f.x;
     const adx = Math.abs(dx);
@@ -2751,7 +2852,9 @@ function tickFighter(g: Game, f: Fighter, dt: number) {
       if (!f.act && f.dashT <= 0) {
         const low = f.hp / f.maxHp < 0.3;
         // dash in from far away, back off when crowded, flee when low
-        if (steady(f) && f.dashCd <= 0 && adx > f.prefRange + 160 && Math.random() < dt * 2.2 * f.aggro) {
+        if (steady(f) && f.dashCd <= 0 && target.guardT > 0.2 && adx < 120 * s && Math.random() < dt * 5 * f.aggro) {
+          startDash(g, f, f.facing); // slip behind a raised guard
+        } else if (steady(f) && f.dashCd <= 0 && adx > f.prefRange + 160 && Math.random() < dt * 2.2 * f.aggro) {
           startDash(g, f, f.facing);
         } else if (steady(f) && f.dashCd <= 0 && adx < 90 * s && (low || f.prefRange > 200) && Math.random() < dt * 2.5) {
           const cornered = (f.facing > 0 && f.x < 90) || (f.facing < 0 && f.x > W - 90);
@@ -2877,6 +2980,8 @@ function tickFighter(g: Game, f: Fighter, dt: number) {
     k = 30 + r * 12;
   } else if (f.dashT > 0) {
     target_ = f.dashDir === f.facing ? DASH : BACKDASH; k = 45;
+  } else if (f.guardT > 0 && !f.act) {
+    target_ = GUARD; k = 40;
   } else if (f.act) {
     const a = f.act;
     const m = a.move;
@@ -2956,7 +3061,146 @@ function smoothPose(f: Fighter, target: Pose, dt: number, k: number) {
   for (const key of POSE_KEYS) f.pose[key] += (target[key] - f.pose[key]) * a;
 }
 
+// ---------- playing a fighter yourself ----------
+export type PlayerPress = "jump" | "dash" | "strike" | "blast" | "ult" | "swap";
+const PRESSES: PlayerPress[] = ["jump", "dash", "strike", "blast", "ult", "swap"];
+/** Seconds a tapped key stays live, so a press during a hit freeze or the end of a move still counts. */
+const PRESS_BUFFER = 0.22;
+/** What the player is holding and has just tapped. The arena screen writes it; the fight reads it. */
+export const playerInput = { left: false, right: false, guard: false, jump: 0, dash: 0, strike: 0, blast: 0, ult: 0, swap: 0 };
+export function pressPlayer(k: PlayerPress) { playerInput[k] = PRESS_BUFFER; }
+export function clearPlayerInput() {
+  playerInput.left = playerInput.right = playerInput.guard = false;
+  for (const k of PRESSES) playerInput[k] = 0;
+}
+
+/** Who the player controls this frame: the first fighter of the line-up to begin with, a team-mate if theirs falls, and the next one along on a swap. */
+function syncPlayer(g: Game, dt: number) {
+  if (!g.control || g.preview || g.demo) { g.player = null; g.playerOut = false; return; }
+  const inp = playerInput;
+  const cur = g.player != null ? g.fighters[g.player] : undefined;
+  const ok = (o: Fighter) => o.alive && o.master == null;
+  if (inp.swap > 0) {
+    inp.swap = 0;
+    const pool = g.fighters.filter((o) => ok(o) && (!cur || cur.team < 0 || o.team === cur.team));
+    if (pool.length) {
+      const i = cur ? pool.findIndex((o) => o.key === cur.key) : -1;
+      g.player = pool[(i + 1) % pool.length].key;
+      g.playerOut = false;
+    }
+  } else if (!cur?.alive && !g.playerOut) {
+    if (!cur) g.player = g.fighters.find(ok)?.key ?? null;
+    else {
+      const mate = cur.team >= 0 ? g.fighters.find((o) => ok(o) && o.team === cur.team) : undefined;
+      g.player = mate ? mate.key : null;
+      g.playerOut = !mate;
+    }
+  }
+  for (const k of PRESSES) inp[k] = Math.max(0, inp[k] - dt);
+}
+
+/** A fighter's moves sorted onto the three attack keys: close strikes, ranged blasts and the big ones. */
+function playerMoves(f: Fighter) {
+  const all = f.def.moves;
+  const ult = all.filter((m) => m.cd >= 5 || m.kind === "heal" || m.kind === "warp");
+  const rest = all.filter((m) => !ult.includes(m));
+  const strike = rest.filter((m) => reachOf(m, f.scale) < 200);
+  const blast = rest.filter((m) => reachOf(m, f.scale) >= 200);
+  const base = rest.length ? rest : all;
+  return { strike: strike.length ? strike : base, blast: blast.length ? blast : base, ult: ult.length ? ult : base };
+}
+
+/** Use the best ready move of a group: one that reaches the target if there is one, otherwise a swing at the air. */
+function playerAttack(g: Game, f: Fighter, target: Fighter, pool: Move[]) {
+  const ready = pool.filter((m) => f.cds[m.id] <= 0 && (m.kind !== "heal" || f.hp < f.maxHp));
+  if (!ready.length) return false;
+  const usable = usableMoves(g, f, target);
+  const reach = ready.filter((m) => usable.includes(m));
+  const from = reach.length ? reach : ready;
+  let best = from[0];
+  let bs = -Infinity;
+  for (const m of from) {
+    const sc = scoreMove(g, f, m, target);
+    if (sc > bs) { bs = sc; best = m; }
+  }
+  startMove(g, f, best, target);
+  return true;
+}
+
+/** The player's fighter: it always faces its nearest opponent, and walks, jumps, dashes, guards and attacks on the keys held. */
+function playerControl(g: Game, f: Fighter, target: Fighter, dt: number) {
+  const inp = playerInput;
+  const rg = rageOf(f);
+  const dir = (inp.right ? 1 : 0) - (inp.left ? 1 : 0);
+  f.facing = target.x >= f.x ? 1 : -1;
+  if (inp.dash > 0 && startDash(g, f, dir || f.facing)) { inp.dash = 0; f.guardT = 0; return; }
+  if (inp.guard && steady(f)) {
+    // a fresh guard opens the parry window; holding it just blocks
+    if (f.guardT <= 0 && f.guardCd <= 0) { f.parryT = PARRY_WINDOW; f.guardCd = 0.6; }
+    f.guardT = 0.1;
+    return;
+  }
+  const kit = playerMoves(f);
+  for (const k of ["ult", "blast", "strike"] as const) {
+    if (inp[k] > 0 && playerAttack(g, f, target, kit[k])) { inp[k] = 0; return; }
+  }
+  if (inp.jump > 0 && f.onGround && !f.jugg) { inp.jump = 0; jump(f, dir); }
+  f.walkDir = dir;
+  const sp = f.def.speed * 1.5 * (f.status.slow > g.t ? 0.55 : 1) * (dir === -f.facing ? 0.7 : 1) * (rg?.speed ?? 1);
+  f.x += dir * sp * dt;
+  if (dir) f.walk += dt * (sp / 14);
+}
+
+/** Raised guards, combo counters and the marker over the player's fighter. */
+function drawCombatMarks(ctx: CanvasRenderingContext2D, g: Game) {
+  for (const f of g.fighters) {
+    if (!f.alive || arriving(g, f)) continue;
+    const s = f.scale;
+    const c = center(f);
+    if (f.guardT > 0 && !f.act) {
+      const perfect = f.parryT > 0;
+      const a0 = f.facing > 0 ? -1.05 : Math.PI - 1.05;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(c.x + f.facing * 4 * s, c.y, 48 * s, a0, a0 + 2.1);
+      ctx.globalAlpha = 0.16;
+      ctx.fillStyle = f.def.glow;
+      ctx.fill();
+      ctx.globalAlpha = 0.9;
+      ctx.lineCap = "round";
+      ctx.lineWidth = (perfect ? 6 : 4) * s;
+      ctx.strokeStyle = perfect ? "white" : f.def.glow;
+      ctx.stroke();
+      ctx.restore();
+    }
+    if (f.chain >= 3 && f.chainT > 0) {
+      ctx.globalAlpha = clamp(f.chainT / 0.3, 0, 1);
+      outlinedText(ctx, `${f.chain} HITS`, f.x, f.y - bodyH(f) - 78 * s, Math.min(30, 15 + f.chain * 1.5), f.chain >= 6 ? "hsl(46 100% 60%)" : "white");
+      ctx.globalAlpha = 1;
+    }
+  }
+  const p = g.player != null ? g.fighters[g.player] : undefined;
+  if (p?.alive && !arriving(g, p)) {
+    const y = p.y - bodyH(p) - 58 * p.scale + Math.sin(g.t * 5) * 2;
+    outlinedText(ctx, "YOU", p.x, y, 15, "white");
+    ctx.fillStyle = "white";
+    ctx.beginPath();
+    ctx.moveTo(p.x - 6, y + 9);
+    ctx.lineTo(p.x + 6, y + 9);
+    ctx.lineTo(p.x, y + 17);
+    ctx.closePath();
+    ctx.fill();
+    // which attack keys have a move ready
+    const kit = playerMoves(p);
+    (["strike", "blast", "ult"] as const).forEach((k, i) => {
+      const ready = kit[k].some((m) => p.cds[m.id] <= 0);
+      outlinedText(ctx, "JKL"[i], p.x + (i - 1) * 18, p.y + 22, 14, ready ? "white" : "hsl(0 0% 100% / 0.3)");
+    });
+  }
+}
+
 export function step(g: Game, dt: number) {
+  syncPlayer(g, dt);
   g.shake = Math.max(0, g.shake - dt * 40);
   stepCam(g, dt);
   for (const f of g.fighters) f.jolt = Math.max(0, f.jolt - dt);
@@ -5660,6 +5904,7 @@ export function drawScene(ctx: CanvasRenderingContext2D, g: Game, backdrop: HTML
   for (const x of g.focus) drawFocus(ctx, x);
   if (g.pre) drawPre(ctx, g);
   if (!g.demo && !cut && (!g.duel || g.fighters.some((f) => f.master != null))) drawHeadBars(ctx, g);
+  if (!g.demo && !cut) drawCombatMarks(ctx, g);
   ctx.restore();
   // the impact frame: one instant of the whole picture in negative
   if (g.inv > 0 && !g.demo) {

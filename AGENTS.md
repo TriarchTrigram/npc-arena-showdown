@@ -35,3 +35,5 @@ use the editor.
 - Progress saves are reached only through `/api/progress-code` with the service-role client; the table has no browser access, and codes are stored as SHA-256 hashes only.
 - AI calls (`/api/hangout`, `/api/own-power`) use `@lovable.dev/ai-gateway` `generateMessage`; regenerate `src/generated/ai-gateway` with `bunx ai-gateway generate --model <slug>` when a model changes.
 - The developer code is checked server-side in `src/lib/dev-code.server.ts`; never import it from browser code.
+- Combat numbers for guarding, parries, counters and combo chains live in `src/lib/combat-rules.ts` (pure, tested in `src/test/combat-rules.test.ts`); the engine imports them rather than inlining values.
+- Player control goes through the engine's `playerInput` / `pressPlayer` and `Game.control`; the arena screen only maps keys, so fight logic stays in `arena-engine.ts`.
